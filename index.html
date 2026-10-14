@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Evaluación de Habilidades Operativas</title>
+  <style>
+    * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { margin: 0; background-color: #f4f6f8; color: #222; display: flex; justify-content: center; align-items: center; min-height: 100vh; touch-action: manipulation; }
+    .card { background: #fff; width: 92%; max-width: 480px; padding: 24px; border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); text-align: center; }
+    h2 { margin-top: 0; font-size: 1.25rem; color: #111; }
+    p { font-size: 0.95rem; line-height: 1.4; color: #555; }
+    .btn { background: #0066cc; color: #fff; border: none; padding: 14px 20px; font-size: 1rem; font-weight: 600; border-radius: 8px; width: 100%; cursor: pointer; margin-top: 12px; }
+    .btn:active { background: #004c99; }
+    .option-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+    .opt-btn { background: #eef2f6; border: 2px solid #ccd6e0; border-radius: 8px; padding: 15px; font-size: 1.1rem; font-weight: bold; cursor: pointer; }
+    .opt-btn:active { background: #d0dbe5; border-color: #0066cc; }
+    #target-area { width: 100%; height: 220px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; color: #fff; margin: 20px 0; user-select: none; cursor: pointer; transition: background 0.1s ease; }
+    .bg-wait { background: #6c757d; }
+    .bg-go { background: #28a745; }
+    .bg-nogo { background: #dc3545; }
+    .svg-box { margin: 15px auto; width: 180px; height: 120px; display: flex; justify-content: center; }
+  </style>
+</head>
+<body>
+
+<div class="card" id="app">
+  <h2>Evaluación Operativa Breve</h2>
+  <p>Esta prueba consta de 2 fases cortas (Razonamiento Visual y Reflejos). Asegúrate de sostener el teléfono con ambas manos y estar en un lugar tranquilo.</p>
+  <button class="btn" onclick="startBlock1()">Comenzar (8 min aprox.)</button>
+</div>
+
+<script>
+  // Captura parámetros de URL: ?id=123&nombre=Carlos
+  const urlParams = new URLSearchParams(window.location.search);
+  const candidateId = urlParams.get('id') || "Anonimo";
+  const candidateName = urlParams.get('nombre') || "Candidato";
+
+  let spatialScore = 0;
+  let currentSpatialQ = 0;
+  let reactionTimes = [];
+  let noGoErrors = 0;
+
+  // Preguntas de razonamiento espacial (con gráficos vectoriales SVG embebidos)
+  const spatialQuestions = [
+    {
+      q: "¿Qué figura representa la pieza original rotada 90° a la derecha?",
+      svg: `<svg viewBox="0 0 100 100" width="100" height="100"><rect x="20" y="20" width="60" height="20" fill="#333"/><rect x="20" y="40" width="20" height="40" fill="#0066cc"/></svg>`,
+      options: ["A", "B", "C", "D"],
+      correct: "B"
+    },
+    {
+      q: "Si plegamos esta caja abierta, ¿cuál de las caras queda en la base inferior?",
+      svg: `<svg viewBox="0 0 100 80" width="120" height="96"><rect x="35" y="5" width="30" height="20" fill="#ddd" stroke="#333"/><rect x="5" y="25" width="30" height="20" fill="#ddd" stroke="#333"/><rect x="35" y="25" width="30" height="20" fill="#0066cc" stroke="#333"/><rect x="65" y="25" width="30" height="20" fill="#ddd" stroke="#333"/><rect x="35" y="45" width="30" height="20" fill="#ddd" stroke="#333"/></svg>`,
+      options: ["Azul", "Lateral Izq", "Superior", "Frontal"],
+      correct: "Azul"
+    }
+  ];
+
+  function startBlock1() {
+    renderSpatialQuestion();
+  }
+
+  function renderSpatialQuestion() {
+    if (currentSpatialQ >= spatialQuestions.length) {
+      startBlock2Intro();
+      return;
+    }
+    const qData = spatialQuestions[currentSpatialQ];
+    document.getElementById('app').innerHTML = `
+      <h2>Fase 1: Visión Espacial (${currentSpatialQ + 1}/${spatialQuestions.length})</h2>
+      <p>${qData.q}</p>
+      <div class="svg-box">${qData.svg}</div>
+      <div class="option-grid">
+        ${qData.options.map(opt => `<button class="opt-btn" onclick="answerSpatial('${opt}')">${opt}</button>`).join('')}
+      </div>
+    `;
+  }
+
+  function answerSpatial(answer) {
+    if (answer === spatialQuestions[currentSpatialQ].correct) spatialScore++;
+    currentSpatialQ++;
+    renderSpatialQuestion();
+  }
+
+  function startBlock2Intro() {
+    document.getElementById('app').innerHTML = `
+      <h2>Fase 2: Reflejos y Atención</h2>
+      <p>Aparecerá un recuadro en pantalla:</p>
+      <p>🟢 <b>VERDE:</b> Toca la pantalla lo más rápido posible.<br>
+         🔴 <b>ROJO:</b> NO toques. Espera a que desaparezca.</p>
+      <button class="btn" onclick="startGoNoGo()">Entendido, empezar</button>
+    `;
+  }
+
+  let trials = 0;
+  const maxTrials = 10;
+  let startTime = 0;
+  let isTargetActive = false;
+  let currentType = "";
+  let timeoutId = null;
+
+  function startGoNoGo() {
+    trials = 0;
+    reactionTimes = [];
+    noGoErrors = 0;
+    nextTrial();
+  }
+
+  function nextTrial() {
+    if (trials >= maxTrials) {
+      finishTest();
+      return;
+    }
+    trials++;
+    isTargetActive = false;
+    
+    document.getElementById('app').innerHTML = `
+      <h2>Fase 2: En curso (${trials}/${maxTrials})</h2>
+      <div id="target-area" class="bg-wait" onclick="handleTap()">ESPERA...</div>
+      <p>Toca solo si cambia a VERDE.</p>
+    `;
+
+    const waitTime = Math.floor(Math.random() * 2000) + 1200;
+    timeoutId = setTimeout(() => {
+      // 70% Go (Verde), 30% No-Go (Rojo)
+      currentType = Math.random() < 0.7 ? "GO" : "NOGO";
+      const target = document.getElementById('target-area');
+      if (!target) return;
+
+      if (currentType === "GO") {
+        target.className = "bg-go";
+        target.innerText = "¡PULSA AHORA!";
+        startTime = Date.now();
+        isTargetActive = true;
+      } else {
+        target.className = "bg-nogo";
+        target.innerText = "¡NO PULSES!";
+        isTargetActive = true;
+        // Si no pulsa en 1.2 segundos, es acierto
+        setTimeout(() => {
+          if (isTargetActive && currentType === "NOGO") {
+            isTargetActive = false;
+            nextTrial();
+          }
+        }, 1200);
+      }
+    }, waitTime);
+  }
+
+  function handleTap() {
+    if (!isTargetActive) return;
+
+    if (currentType === "GO") {
+      const rt = Date.now() - startTime;
+      reactionTimes.push(rt);
+      isTargetActive = false;
+      nextTrial();
+    } else if (currentType === "NOGO") {
+      noGoErrors++;
+      isTargetActive = false;
+      nextTrial();
+    }
+  }
+
+  function finishTest() {
+    clearTimeout(timeoutId);
+    const avgReaction = reactionTimes.length 
+      ? Math.round(reactionTimes.reduce((a, b) => a + b, 0) / reactionTimes.length) 
+      : 0;
+
+    // Aquí puedes pegar la URL de Google Apps Script cuando la tengas
+    const googleScriptUrl = "";
+
+    if (googleScriptUrl) {
+      fetch(googleScriptUrl, {
+        method: "POST",
+        mode: "no-cors",
+        body: JSON.stringify({
+          id: candidateId,
+          nombre: candidateName,
+          aciertosEspacial: spatialScore,
+          tiempoReaccion: avgReaction,
+          erroresImpulsividad: noGoErrors
+        })
+      });
+    }
+
+    document.getElementById('app').innerHTML = `
+      <h2>¡Prueba Finalizada!</h2>
+      <p>Gracias, <b>${candidateName}</b>. Tus respuestas han sido registradas.</p>
+      <div style="text-align: left; background: #eef2f6; padding: 12px; border-radius: 8px; margin: 15px 0; font-size: 0.9rem;">
+        <b>Aciertos espaciales:</b> ${spatialScore} / ${spatialQuestions.length}<br>
+        <b>Tiempo de reacción medio:</b> ${avgReaction} ms<br>
+        <b>Falsas alarmas (pulsar en rojo):</b> ${noGoErrors}
+      </div>
+      <p>Nos comunicaremos contigo vía WhatsApp con los siguientes pasos.</p>
+    `;
+  }
+</script>
+</body>
+</html>
